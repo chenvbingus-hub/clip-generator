@@ -17,12 +17,29 @@ MP3 音频 / MP4 视频片段，支持批量处理、ZIP 打包下载。文件�
 
 ## 使用方法
 
-1. **启动本地服务**（必须，直接双击 index.html 无法运行）：
-   - Mac：双击 `start_mac.command`
-   - Windows：双击 `start_win.bat`（需已安装 Python）
-   - 或手动：在本目录执行 `python3 -m http.server 8137`，然后打开 <http://localhost:8137>
-2. 把 MP3 / MP4 文件拖进页面，等待处理完成
+1. **启动本地服务**（必须，直接双击 index.html 无法运行——浏览器会禁止 file:// 页面加载处理引擎）：
+   - **Mac**：打开「终端」Terminal，执行
+
+     ```bash
+     cd 本工具所在文件夹 && python3 -m http.server 8137
+     ```
+
+     或双击 `start_mac.command`（首次可能被 macOS 拦截，见下方“常见问题”）
+   - **Windows**：双击 `start_win.bat`（需已安装 Python），或在命令提示符执行 `python -m http.server 8137`
+2. 浏览器打开 <http://localhost:8137>，把 MP3 / MP4 文件拖进页面，等待处理完成
 3. 逐句试听 / 下载，或点「ZIP」打包下载
+
+> 如果不小心双击打开了 index.html，页面顶部会显示一条**包含你实际文件夹路径、可直接复制**的启动命令，照做即可。
+
+## 常见问题
+
+- **Mac 双击 start_mac.command 提示“Apple 无法验证……是否安全”**：
+  这是 macOS 对浏览器下载文件的隔离机制（Gatekeeper），不是脚本有问题。任选其一：
+  - 在终端执行 `xattr -d com.apple.quarantine start_mac.command` 解除隔离，之后即可双击运行；
+  - 或到「系统设置 → 隐私与安全性」底部点「仍要打开」；
+  - 或干脆不用脚本，直接在终端运行上面的 `python3 -m http.server 8137` 命令；
+  - 用 `git clone` 获取本仓库（而不是下载 ZIP）则完全不会有此问题。
+- **首次处理时提示模型下载失败**：把页面上的「模型下载源」切换为 **hf-mirror 国内镜像** 后重试。
 
 ## 说明
 

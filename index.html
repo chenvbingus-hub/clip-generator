@@ -201,6 +201,10 @@ dropzone.addEventListener('drop', e => {
 });
 
 function addFiles(files) {
+  if (IS_FILE_PROTOCOL) {
+    alert('当前是直接双击打开的页面（file:// 方式），浏览器会禁止加载处理引擎，无法处理文件。\n\n请按页面顶部黄色提示框的步骤启动本地服务，再从 http://localhost:8137 打开使用。');
+    return;
+  }
   const media = files.filter(f => /\.(mp3|wav|m4a|aac|flac|ogg|oga|opus|wma|mp4|mov|m4v|webm|mkv|avi|ts|flv)$/i.test(f.name) || /^(audio|video)\//.test(f.type));
   if (!media.length) { alert('请选择音频或视频文件'); return; }
   for (const f of media) {
@@ -614,12 +618,34 @@ resetBtn.addEventListener('click', () => {
   updateQueueCount();
 });
 
-// file:// 协议提示
-if (location.protocol === 'file:') {
-  document.querySelector('.subtitle').insertAdjacentHTML('afterend',
-    '<div class="card" style="border-left:4px solid #f59e0b"><b>⚠️ 请通过本地服务器打开本页面。</b><br>' +
-    '直接双击 HTML 文件（file:// 协议）浏览器会禁止加载处理引擎。请双击运行目录里的 <code>start_mac.command</code>（Mac）或 <code>start_win.bat</code>（Windows），' +
-    '或在目录下执行 <code>python3 -m http.server 8137</code> 后访问 <code>http://localhost:8137</code>。</div>');
+// file:// 协议：浏览器禁止在本地文件页面里创建 Worker，处理引擎无法启动，必须走本地服务器
+const IS_FILE_PROTOCOL = location.protocol === 'file:';
+if (IS_FILE_PROTOCOL) {
+  let dir = decodeURIComponent(location.pathname).replace(/\/[^/]*$/, '');
+  const isWin = /^\/[A-Za-z]:\//.test(decodeURIComponent(location.pathname));
+  if (isWin) dir = dir.slice(1).replace(/\//g, '\\');
+  const macCmd = `cd "${dir}" && python3 -m http.server 8137`;
+  const winCmd = `cd /d "${dir}" && python -m http.server 8137`;
+  const cmd = isWin ? winCmd : macCmd;
+  document.querySelector('.subtitle').insertAdjacentHTML('afterend', `
+    <div class="card" style="border-left:4px solid #f59e0b">
+      <div style="font-size:16px;margin-bottom:10px"><b>⚠️ 不能直接双击打开本页面，需要先启动本地服务（只需一条命令）</b></div>
+      <div style="line-height:1.9;font-size:14px">
+        直接双击 HTML（file:// 方式）浏览器会禁止加载处理引擎。请这样做：<br>
+        <b>1.</b> 打开${isWin ? '「命令提示符」(Win+R 输入 cmd 回车)' : '「终端」Terminal（在启动台里搜索“终端”）'}<br>
+        <b>2.</b> 粘贴下面这条命令并回车（已包含你的文件夹路径）：<br>
+        <code id="serveCmd" style="display:block;background:#f1f5f9;border-radius:8px;padding:10px 12px;margin:8px 0;user-select:all;word-break:break-all">${escapeHtml(cmd)}</code>
+        <button class="btn btn-gray" id="copyCmdBtn" style="padding:6px 14px;font-size:13px">📋 复制命令</button><br>
+        <b>3.</b> 保持该窗口开着，浏览器访问 <a href="http://localhost:8137" style="color:#2563eb"><b>http://localhost:8137</b></a> 即可正常使用。<br>
+        <span style="color:#64748b">提示：如果 Mac 提示 python3 需要安装开发者工具，点“安装”即可；
+        如果双击 start_mac.command 被 macOS 拦截（“无法验证是否安全”），可在终端执行
+        <code>xattr -d com.apple.quarantine start_mac.command</code> 解除，之后就能双击启动。</span>
+      </div>
+    </div>`);
+  document.getElementById('copyCmdBtn').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(cmd); document.getElementById('copyCmdBtn').textContent = '✓ 已复制'; }
+    catch { window.prompt('请手动复制以下命令：', cmd); }
+  });
 }
 </script>
 </body>
