@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>音视频按句切分工具 · MP3 / MP4</title>
+<link rel="icon" href="data:,">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: #f0f4f8; color: #1f2937; padding: 28px 16px 60px;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  h1 { font-size: 26px; margin-bottom: 6px; }
+  .subtitle { color: #64748b; font-size: 14px; margin-bottom: 20px; }
+  .card { background: #fff; border-radius: 12px; padding: 20px 24px; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(15,23,42,.06); }
+  #dropzone {
+    border: 2px dashed #94a3b8; border-radius: 12px; background: #fff;
+    padding: 56px 20px; text-align: center; cursor: pointer; margin-bottom: 18px;
+    transition: border-color .15s, background .15s;
+  }
+  #dropzone.dragover { border-color: #2563eb; background: #eff6ff; }
+  #dropzone .icon { font-size: 44px; margin-bottom: 14px; }
+  #dropzone .main { font-size: 19px; font-weight: 600; margin-bottom: 10px; }
+  #dropzone .hint { color: #64748b; font-size: 13.5px; }
+  .settings { display: flex; flex-wrap: wrap; gap: 18px 26px; align-items: center; font-size: 14px; }
+  .settings label { display: flex; align-items: center; gap: 7px; }
+  .settings select { padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; background: #fff; }
+  .settings input[type=checkbox] { width: 16px; height: 16px; accent-color: #2563eb; }
+  h2 { font-size: 17px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  h2 .count { color: #64748b; font-weight: 400; font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; color: #64748b; font-weight: 500; padding: 8px 10px; border-bottom: 1px solid #e2e8f0; }
+  td { padding: 10px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+  tr.active-row { background: #eff6ff; }
+  .status-done { color: #16a34a; } .status-err { color: #dc2626; } .status-run { color: #2563eb; } .status-wait { color: #94a3b8; }
+  .minibar { width: 160px; height: 7px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+  .minibar > div { height: 100%; background: #22c55e; border-radius: 4px; width: 0%; transition: width .3s; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 7px; border: none; cursor: pointer;
+    padding: 10px 18px; border-radius: 9px; font-size: 14.5px; font-weight: 600;
+  }
+  .btn-green { background: #22c55e; color: #fff; } .btn-green:hover { background: #16a34a; }
+  .btn-gray { background: #e2e8f0; color: #334155; } .btn-gray:hover { background: #cbd5e1; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .zip-link { color: #2563eb; cursor: pointer; text-decoration: none; font-weight: 500; }
+  .zip-link:hover { text-decoration: underline; }
+  #overallBar { height: 10px; background: #e2e8f0; border-radius: 6px; overflow: hidden; margin: 12px 0 8px; }
+  #overallBar > div { height: 100%; width: 0%; border-radius: 6px; background: linear-gradient(90deg, #2563eb, #60a5fa); transition: width .3s; }
+  #overallText { color: #64748b; font-size: 13.5px; margin-bottom: 12px; }
+  #logbox {
+    background: #0f172a; color: #5eead4; font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px; line-height: 1.7; border-radius: 10px; padding: 14px 18px;
+    height: 300px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;
+  }
+  #logbox .warn { color: #fbbf24; } #logbox .err { color: #f87171; } #logbox .info { color: #e2e8f0; }
+  .file-head {
+    background: #f8fafc; border-radius: 8px; padding: 12px 14px; margin: 18px 0 6px;
+    font-size: 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  .file-head .fname { font-weight: 600; word-break: break-all; }
+  .sent-text { font-size: 15px; line-height: 1.65; }
+  .dictation .sent-text { filter: blur(6px); cursor: pointer; user-select: none; transition: filter .15s; }
+  .dictation .sent-text.revealed { filter: none; user-select: auto; }
+  .time-cell { color: #475569; white-space: nowrap; font-size: 13.5px; }
+  audio { width: 250px; height: 40px; }
+  video { width: 280px; max-height: 170px; border-radius: 8px; background: #000; }
+  .dl-mini { font-size: 13px; color: #2563eb; text-decoration: none; display: inline-block; margin-top: 4px; }
+  .dl-mini:hover { text-decoration: underline; }
+  .toggle-right { margin-left: auto; font-size: 13.5px; color: #475569; display: flex; align-items: center; gap: 6px; font-weight: 400; }
+  .hidden { display: none; }
+  .tag { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #e0e7ff; color: #4338ca; }
+  .tag.audio { background: #dcfce7; color: #15803d; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎬 音视频按句切分工具</h1>
+  <div class="subtitle">英语听写训练 · 语音转写 → 语义分句 → 每句独立 MP3 / MP4 片段 · 支持批量处理</div>
+
+  <div id="dropzone">
+    <div class="icon">📂</div>
+    <div class="main">把 MP3 / MP4 文件拖到这里（可一次拖入多个），或点击选择文件</div>
+    <div class="hint">音频支持 mp3 / wav / m4a 等 · 视频支持 mp4 / mov / webm / mkv 等 · 多个文件自动排队依次处理 · 文件全程本机处理，不上传外网</div>
+    <input type="file" id="fileInput" multiple accept="audio/*,video/*,.mp3,.wav,.m4a,.aac,.flac,.ogg,.mp4,.mov,.m4v,.webm,.mkv,.avi" style="display:none">
+  </div>
+
+  <div class="card">
+    <div class="settings">
+      <label>识别模型：
+        <select id="modelSel">
+          <option value="tiny">tiny（最快）</option>
+          <option value="base">base（较快）</option>
+          <option value="small" selected>small（推荐）</option>
+        </select>
+      </label>
+      <label>语言：
+        <select id="langSel">
+          <option value="english" selected>英语</option>
+          <option value="chinese">中文</option>
+          <option value="japanese">日语</option>
+          <option value="auto">自动检测</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="semanticChk" checked> 语义校正（合并误切句子）</label>
+      <label>视频切割：
+        <select id="cutModeSel">
+          <option value="precise" selected>精确（重编码，稍慢）</option>
+          <option value="fast">快速（按关键帧，切点可能不准）</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="alsoMp3Chk"> 视频同时导出 MP3</label>
+      <label>模型下载源：
+        <select id="hostSel">
+          <option value="https://huggingface.co">HuggingFace 官方</option>
+          <option value="https://hf-mirror.com">国内镜像 hf-mirror</option>
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <div class="card hidden" id="queueCard">
+    <h2>📋 处理队列 <span class="count" id="queueCount"></span></h2>
+    <table>
+      <thead><tr><th style="width:36px">#</th><th>文件</th><th style="width:64px">类型</th><th style="width:80px">状态</th><th style="width:180px">进度</th><th style="width:56px">句数</th><th style="width:56px">ZIP</th></tr></thead>
+      <tbody id="queueBody"></tbody>
+    </table>
+    <div style="margin-top:16px; display:flex; gap:12px;">
+      <button class="btn btn-green" id="zipAllBtn" disabled>⬇️ 全部打包下载 (ZIP)</button>
+      <button class="btn btn-gray" id="resetBtn">处理新的文件</button>
+    </div>
+  </div>
+
+  <div class="card hidden" id="progressCard">
+    <h2 id="overallTitle">处理中…</h2>
+    <div id="overallBar"><div></div></div>
+    <div id="overallText"></div>
+    <div id="logbox"></div>
+  </div>
+
+  <div class="card hidden" id="resultCard">
+    <h2>✅ 切分结果 <span class="count" id="resultCount"></span>
+      <span class="toggle-right"><input type="checkbox" id="dictationChk" style="width:15px;height:15px;accent-color:#2563eb"> 隐藏原文（听写模式，点击句子可显示）</span>
+    </h2>
+    <div id="resultsBox"></div>
+  </div>
+</div>
+
+<script src="vendor/ffmpeg.js"></script>
+<script src="vendor/jszip.min.js"></script>
+<script src="js/segmenter.js"></script>
+<script type="module">
+const $ = id => document.getElementById(id);
+const dropzone = $('dropzone'), fileInput = $('fileInput');
+const queueCard = $('queueCard'), queueBody = $('queueBody'), queueCount = $('queueCount');
+const progressCard = $('progressCard'), overallBarInner = $('overallBar').firstElementChild;
+const overallText = $('overallText'), overallTitle = $('overallTitle'), logbox = $('logbox');
+const resultCard = $('resultCard'), resultsBox = $('resultsBox'), resultCount = $('resultCount');
+const zipAllBtn = $('zipAllBtn'), resetBtn = $('resetBtn');
+
+// ---------- 设置持久化 ----------
+const SETTING_IDS = ['modelSel','langSel','semanticChk','cutModeSel','alsoMp3Chk','hostSel'];
+for (const id of SETTING_IDS) {
+  const el = $(id);
+  const saved = localStorage.getItem('clipgen_' + id);
+  if (saved !== null) { if (el.type === 'checkbox') el.checked = saved === '1'; else el.value = saved; }
+  el.addEventListener('change', () => {
+    localStorage.setItem('clipgen_' + id, el.type === 'checkbox' ? (el.checked ? '1' : '0') : el.value);
+  });
+}
+$('dictationChk').addEventListener('change', e => {
+  resultsBox.classList.toggle('dictation', e.target.checked);
+});
+
+// ---------- 日志 ----------
+function log(msg, cls) {
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = msg;
+  logbox.appendChild(line);
+  logbox.scrollTop = logbox.scrollHeight;
+}
+
+// ---------- 状态 ----------
+const VIDEO_EXT = /\.(mp4|mov|m4v|webm|mkv|avi|ts|flv)$/i;
+let queue = [];          // {id, file, isVideo, ext, status, tr:行元素, sentences, clips:[{name,blob,mp3Blob}], progress}
+let processing = false;
+let uid = 0;
+
+function fmtTime(s) { return s.toFixed(2) + 's'; }
+
+// ---------- 文件入队 ----------
+dropzone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => { addFiles([...e.target.files]); fileInput.value = ''; });
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault(); dropzone.classList.remove('dragover');
+  addFiles([...e.dataTransfer.files]);
+});
+
+function addFiles(files) {
+  const media = files.filter(f => /\.(mp3|wav|m4a|aac|flac|ogg|oga|opus|wma|mp4|mov|m4v|webm|mkv|avi|ts|flv)$/i.test(f.name) || /^(audio|video)\//.test(f.type));
+  if (!media.length) { alert('请选择音频或视频文件'); return; }
+  for (const f of media) {
+    const isVideo = VIDEO_EXT.test(f.name) || f.type.startsWith('video/');
+    const m = f.name.match(/\.([a-z0-9]+)$/i);
+    const item = {
+      id: ++uid, file: f, isVideo,
+      ext: m ? m[1].toLowerCase() : (isVideo ? 'mp4' : 'mp3'),
+      status: 'wait', sentences: [], clips: [],
+    };
+    queue.push(item);
+    addQueueRow(item);
+  }
+  queueCard.classList.remove('hidden');
+  updateQueueCount();
+  if (!processing) processQueue();
+}
+
+function addQueueRow(item) {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td>${queue.indexOf(item) + 1}</td>
+    <td style="word-break:break-all">${escapeHtml(shorten(item.file.name, 70))}</td>
+    <td><span class="tag ${item.isVideo ? '' : 'audio'}">${item.isVideo ? '视频' : '音频'}</span></td>
+    <td class="cell-status status-wait">等待中</td>
+    <td><div class="minibar"><div></div></div></td>
+    <td class="cell-count">-</td>
+    <td class="cell-zip">-</td>`;
+  queueBody.appendChild(tr);
+  item.tr = tr;
+}
+
+function setRow(item, status, text) {
+  item.status = status;
+  const cell = item.tr.querySelector('.cell-status');
+  cell.textContent = text;
+  cell.className = 'cell-status status-' + ({wait:'wait', run:'run', done:'done', err:'err'}[status]);
+  item.tr.classList.toggle('active-row', status === 'run');
+}
+function setRowProgress(item, frac) {
+  item.progress = frac;
+  item.tr.querySelector('.minibar > div').style.width = Math.round(frac * 100) + '%';
+  updateOverall();
+}
+function updateQueueCount() {
+  const done = queue.filter(q => q.status === 'done').length;
+  queueCount.textContent = `(${done}/${queue.length} 完成)`;
+}
+function updateOverall() {
+  const total = queue.length || 1;
+  const sum = queue.reduce((a, q) => a + (q.status === 'done' ? 1 : (q.progress || 0)), 0);
+  overallBarInner.style.width = Math.round(sum / total * 100) + '%';
+  const nSent = queue.reduce((a, q) => a + q.sentences.length, 0);
+  overallText.textContent = `进度 ${Math.round(sum / total * 100)}% · 已导出 ${nSent} 句`;
+}
+
+function escapeHtml(s) { return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function shorten(s, n) { return s.length > n ? s.slice(0, n) + '…' : s; }
+
+// ---------- FFmpeg ----------
+let ffmpeg = null;
+let ffmpegLogBuf = [];
+async function getFFmpeg() {
+  if (ffmpeg) return ffmpeg;
+  log('正在加载 FFmpeg 引擎（本地文件，仅首次需要）...');
+  const { FFmpeg } = FFmpegWASM;
+  const ff = new FFmpeg();
+  ff.on('log', ({ message }) => { ffmpegLogBuf.push(message); if (ffmpegLogBuf.length > 60) ffmpegLogBuf.shift(); });
+  await ff.load({
+    coreURL: new URL('vendor/ffmpeg-core.js', location.href).href,
+    wasmURL: new URL('vendor/ffmpeg-core.wasm', location.href).href,
+  });
+  log('FFmpeg 引擎加载完成');
+  ffmpeg = ff;
+  return ff;
+}
+async function ffexec(ff, args) {
+  ffmpegLogBuf = [];
+  const ret = await ff.exec(args);
+  if (ret !== 0) {
+    const tail = ffmpegLogBuf.slice(-8).join('\n');
+    throw new Error('FFmpeg 处理失败 (exit ' + ret + '):\n' + tail);
+  }
+}
+
+// ---------- Whisper ----------
+let TF = null;           // transformers 模块
+let asrPipe = null, asrKey = '';
+const dlLogged = new Set();
+
+// 测试钩子：URL 带 ?mockasr=1 时用假转写结果代替真实模型（仅供自动化测试）
+function mockAsr() {
+  return async (pcm) => {
+    const dur = pcm.length / 16000;
+    const chunks = [];
+    let t = 0, n = 0;
+    while (t < dur - 0.3) {
+      for (let i = 0; i < 4 && t < dur - 0.3; i++) {
+        chunks.push({ text: ' ' + (i === 0 ? 'Word' : 'word') + (++n) + (i === 3 ? '.' : ''), timestamp: [t, t + 0.25] });
+        t += 0.3;
+      }
+    }
+    return { chunks };
+  };
+}
+
+async function getASR() {
+  if (new URLSearchParams(location.search).has('mockasr')) return mockAsr();
+  if (!TF) {
+    log('正在加载语音识别引擎...');
+    TF = await import('./vendor/transformers.min.js');
+    TF.env.allowLocalModels = false;
+    TF.env.useBrowserCache = true;
+    TF.env.backends.onnx.wasm.wasmPaths = new URL('vendor/', location.href).href;
+    TF.env.backends.onnx.wasm.numThreads = 1;
+  }
+  const model = $('modelSel').value;
+  const host = $('hostSel').value;
+  const key = model + '|' + host;
+  if (asrPipe && asrKey === key) return asrPipe;
+  TF.env.remoteHost = host;
+  const modelId = 'Xenova/whisper-' + model;
+  log(`正在准备识别模型 ${modelId}（首次使用需下载，之后走浏览器缓存）...`);
+  dlLogged.clear();
+  asrPipe = await TF.pipeline('automatic-speech-recognition', modelId, {
+    quantized: true,
+    progress_callback: p => {
+      if (p.status === 'progress' && p.total) {
+        const decile = Math.floor(p.progress / 10) * 10;
+        const k = p.file + '@' + decile;
+        if (!dlLogged.has(k)) { dlLogged.add(k); log(`  下载 ${p.file}: ${decile}%`); }
+      } else if (p.status === 'done') {
+        log(`  ${p.file} 就绪`);
+      }
+    },
+  });
+  asrKey = key;
+  log('识别模型加载完成');
+  return asrPipe;
+}
+
+// ---------- WAV 解析 ----------
+function parseWavFloat32(u8) {
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  if (dv.getUint32(0, false) !== 0x52494646) throw new Error('WAV 解析失败：不是 RIFF 文件');
+  let off = 12;
+  while (off + 8 <= u8.byteLength) {
+    const id = dv.getUint32(off, false);
+    const size = dv.getUint32(off + 4, true);
+    if (id === 0x64617461) { // 'data'
+      const start = u8.byteOffset + off + 8;
+      const len = Math.min(size, u8.byteLength - off - 8);
+      return new Float32Array(u8.buffer.slice(start, start + len));
+    }
+    off += 8 + size + (size % 2);
+  }
+  throw new Error('WAV 解析失败：未找到 data 块');
+}
+
+// ---------- 主流水线 ----------
+async function processQueue() {
+  processing = true;
+  progressCard.classList.remove('hidden');
+  for (const item of queue) {
+    if (item.status !== 'wait') continue;
+    setRow(item, 'run', '处理中');
+    overallTitle.textContent = `正在处理：${shorten(item.file.name, 50)}`;
+    try {
+      await processFile(item);
+      setRow(item, 'done', '✓ 完成');
+      item.tr.querySelector('.cell-count').textContent = item.sentences.length;
+      const zipCell = item.tr.querySelector('.cell-zip');
+      zipCell.innerHTML = '';
+      const a = document.createElement('a');
+      a.className = 'zip-link'; a.textContent = 'ZIP';
+      a.addEventListener('click', () => downloadZipForItem(item));
+      zipCell.appendChild(a);
+      setRowProgress(item, 1);
+    } catch (err) {
+      console.error(err);
+      setRow(item, 'err', '✗ 失败');
+      log(`处理失败：${item.file.name}`, 'err');
+      log(String(err && err.message || err), 'err');
+    }
+    updateQueueCount();
+  }
+  const done = queue.filter(q => q.status === 'done').length;
+  overallTitle.textContent = `全部处理完成 (${done}/${queue.length})`;
+  zipAllBtn.disabled = done === 0;
+  processing = false;
+}
+
+async function processFile(item) {
+  const t0 = performance.now();
+  log(`\n===== 开始处理: ${item.file.name} =====`, 'info');
+  if (item.file.size > 900 * 1024 * 1024) {
+    log('警告：文件超过 900MB，浏览器内存可能不足，建议先压缩或分段', 'warn');
+  }
+
+  const ff = await getFFmpeg();
+  setRowProgress(item, 0.03);
+
+  // 1. 写入 & 提取 16kHz 单声道音频
+  const inName = `input_${item.id}.${item.ext.replace(/[^a-z0-9]/g, '') || 'dat'}`;
+  await ff.writeFile(inName, new Uint8Array(await item.file.arrayBuffer()));
+  log(item.isVideo ? '正在从视频中提取音轨...' : '正在解码音频...');
+  const wavName = `audio_${item.id}.wav`;
+  await ffexec(ff, ['-i', inName, '-vn', '-ac', '1', '-ar', '16000', '-acodec', 'pcm_f32le', '-f', 'wav', wavName]);
+  const wavData = await ff.readFile(wavName);
+  await ff.deleteFile(wavName);
+  const pcm = parseWavFloat32(wavData);
+  const duration = pcm.length / 16000;
+  log(`音频提取完成，时长 ${duration.toFixed(1)} 秒`);
+  setRowProgress(item, 0.1);
+
+  // 2. Whisper 转写（词级时间戳）
+  const asr = await getASR();
+  log('正在转写（首次转写会较慢，请耐心等待）...');
+  const lang = $('langSel').value;
+  const totalChunks = Math.max(1, Math.ceil(duration / 25));
+  let chunksDone = 0;
+  const opts = {
+    chunk_length_s: 30,
+    stride_length_s: 5,
+    return_timestamps: 'word',
+    task: 'transcribe',
+    chunk_callback: () => {
+      chunksDone++;
+      setRowProgress(item, 0.1 + 0.5 * Math.min(chunksDone / totalChunks, 1));
+    },
+  };
+  if (lang !== 'auto') opts.language = lang;
+  const output = await asr(pcm, opts);
+  const chunks = output.chunks || [];
+  const words = Segmenter.wordsFromChunks(chunks, duration);
+  log(`转写完成, 音频时长 ${duration.toFixed(1)} 秒, 共 ${words.length} 个单词`);
+  setRowProgress(item, 0.6);
+
+  // 3. 分句 + 语义校正
+  let segs = Segmenter.splitByPunctuation(words);
+  log(`按标点初步分出 ${segs.length} 个片段`);
+  if ($('semanticChk').checked) {
+    log('正在对语义进行判断，合并被误切的句子...');
+    const merged = Segmenter.semanticMerge(segs);
+    log(`语义校正完成: ${segs.length} 个片段 -> ${merged.length} 个完整句子`);
+    segs = merged;
+  }
+  if (!segs.length) throw new Error('未识别出任何句子（可能是纯音乐 / 静音，或语言选择不正确）');
+  item.sentences = segs;
+  log(`共 ${segs.length} 个句子, 开始切分导出...`);
+
+  // 4. 逐句切割
+  const cutMode = $('cutModeSel').value;
+  const alsoMp3 = $('alsoMp3Chk').checked;
+  item.clips = [];
+  for (let i = 0; i < segs.length; i++) {
+    const s = segs[i];
+    const start = Math.max(0, s.start - 0.12);
+    const end = Math.min(duration, s.end + 0.25);
+    const dur = Math.max(0.2, end - start);
+    const base = String(i + 1).padStart(3, '0') + '_' + slugify(s.text);
+    log(`[${s.start.toFixed(1).padStart(6)}s] ${shorten(s.text, 80)}`);
+
+    const clip = { name: base, start: s.start, end: s.end, text: s.text };
+    if (item.isVideo) {
+      const outExt = cutMode === 'fast' ? item.ext : 'mp4';
+      const outName = `clip_${item.id}_${i}.${outExt}`;
+      const args = cutMode === 'fast'
+        ? ['-ss', start.toFixed(3), '-i', inName, '-t', dur.toFixed(3), '-c', 'copy', '-avoid_negative_ts', 'make_zero', outName]
+        : ['-ss', start.toFixed(3), '-i', inName, '-t', dur.toFixed(3),
+           '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-pix_fmt', 'yuv420p',
+           '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', outName];
+      await ffexec(ff, args);
+      const data = await ff.readFile(outName);
+      await ff.deleteFile(outName);
+      clip.ext = outExt;
+      clip.blob = new Blob([data.buffer], { type: outExt === 'webm' ? 'video/webm' : 'video/mp4' });
+      if (alsoMp3) {
+        const mp3Name = `clip_${item.id}_${i}.mp3`;
+        await ffexec(ff, ['-ss', start.toFixed(3), '-i', inName, '-t', dur.toFixed(3), '-vn', '-acodec', 'libmp3lame', '-b:a', '128k', mp3Name]);
+        const mp3Data = await ff.readFile(mp3Name);
+        await ff.deleteFile(mp3Name);
+        clip.mp3Blob = new Blob([mp3Data.buffer], { type: 'audio/mpeg' });
+      }
+    } else {
+      const outName = `clip_${item.id}_${i}.mp3`;
+      await ffexec(ff, ['-ss', start.toFixed(3), '-i', inName, '-t', dur.toFixed(3), '-vn', '-acodec', 'libmp3lame', '-b:a', '128k', outName]);
+      const data = await ff.readFile(outName);
+      await ff.deleteFile(outName);
+      clip.ext = 'mp3';
+      clip.blob = new Blob([data.buffer], { type: 'audio/mpeg' });
+    }
+    item.clips.push(clip);
+    setRowProgress(item, 0.6 + 0.4 * (i + 1) / segs.length);
+  }
+  await ff.deleteFile(inName);
+
+  renderResults(item);
+  log(`全部完成! 共 ${segs.length} 个句子文件, 用时 ${((performance.now() - t0) / 1000).toFixed(1)} 秒`);
+}
+
+function slugify(text) {
+  const s = text.replace(/[\\/:*?"<>|#%&{}$!'@+`=~^;,]/g, '').replace(/\s+/g, ' ').trim().slice(0, 50).replace(/[\s.]+$/, '');
+  return s || 'clip';
+}
+
+// ---------- 结果展示 ----------
+function renderResults(item) {
+  resultCard.classList.remove('hidden');
+  const box = document.createElement('div');
+
+  const head = document.createElement('div');
+  head.className = 'file-head';
+  const zipA = document.createElement('a');
+  zipA.className = 'zip-link'; zipA.textContent = '下载本文件 ZIP';
+  zipA.addEventListener('click', () => downloadZipForItem(item));
+  head.innerHTML = `<span class="fname">${item.isVideo ? '🎬' : '🎵'} ${escapeHtml(item.file.name)} <span style="color:#64748b;font-weight:400">(${item.sentences.length} 句)</span></span>`;
+  head.appendChild(zipA);
+  box.appendChild(head);
+
+  const table = document.createElement('table');
+  table.innerHTML = `<thead><tr><th style="width:36px">#</th><th style="width:300px">试听</th><th style="width:130px">时间</th><th>句子</th></tr></thead>`;
+  const tbody = document.createElement('tbody');
+  for (let i = 0; i < item.clips.length; i++) {
+    const c = item.clips[i];
+    const tr = document.createElement('tr');
+    const url = URL.createObjectURL(c.blob);
+    const tdMedia = document.createElement('td');
+    const media = document.createElement(item.isVideo ? 'video' : 'audio');
+    media.controls = true; media.preload = 'metadata'; media.src = url;
+    tdMedia.appendChild(media);
+    const dl = document.createElement('a');
+    dl.className = 'dl-mini'; dl.href = url; dl.download = `${c.name}.${c.ext}`; dl.textContent = '⬇ 下载';
+    tdMedia.appendChild(document.createElement('br'));
+    tdMedia.appendChild(dl);
+
+    const tdText = document.createElement('td');
+    const span = document.createElement('span');
+    span.className = 'sent-text'; span.textContent = c.text;
+    span.addEventListener('click', () => span.classList.toggle('revealed'));
+    tdText.appendChild(span);
+
+    tr.innerHTML = `<td>${i + 1}</td>`;
+    tr.appendChild(tdMedia);
+    const tdTime = document.createElement('td');
+    tdTime.className = 'time-cell';
+    tdTime.textContent = `${fmtTime(c.start)} – ${fmtTime(c.end)}`;
+    tr.appendChild(tdTime);
+    tr.appendChild(tdText);
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  box.appendChild(table);
+  resultsBox.appendChild(box);
+
+  const total = queue.reduce((a, q) => a + q.clips.length, 0);
+  const files = queue.filter(q => q.clips.length).length;
+  resultCount.textContent = `共 ${files} 个文件 · ${total} 句`;
+}
+
+// ---------- ZIP 导出 ----------
+function baseName(name) { return name.replace(/\.[^.]+$/, ''); }
+
+function addItemToZip(zip, item) {
+  for (const c of item.clips) {
+    zip.file(`${c.name}.${c.ext}`, c.blob);
+    if (c.mp3Blob) zip.file(`mp3/${c.name}.mp3`, c.mp3Blob);
+  }
+  const lines = item.clips.map((c, i) =>
+    `${String(i + 1).padStart(3, '0')}\t[${c.start.toFixed(2)} - ${c.end.toFixed(2)}]\t${c.text}`);
+  zip.file('transcript.txt', lines.join('\n') + '\n');
+}
+
+async function downloadZipForItem(item) {
+  const zip = new JSZip();
+  addItemToZip(zip, item);
+  await saveZip(zip, `${baseName(item.file.name)}_按句切分.zip`);
+}
+
+zipAllBtn.addEventListener('click', async () => {
+  const zip = new JSZip();
+  for (const item of queue) {
+    if (!item.clips.length) continue;
+    addItemToZip(zip.folder(baseName(item.file.name)), item);
+  }
+  await saveZip(zip, '按句切分_全部.zip');
+});
+
+async function saveZip(zip, filename) {
+  const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+}
+
+// ---------- 重置 ----------
+resetBtn.addEventListener('click', () => {
+  if (processing) { alert('正在处理中，请等待完成'); return; }
+  queue = [];
+  queueBody.innerHTML = '';
+  resultsBox.innerHTML = '';
+  logbox.innerHTML = '';
+  queueCard.classList.add('hidden');
+  progressCard.classList.add('hidden');
+  resultCard.classList.add('hidden');
+  zipAllBtn.disabled = true;
+  updateQueueCount();
+});
+
+// file:// 协议提示
+if (location.protocol === 'file:') {
+  document.querySelector('.subtitle').insertAdjacentHTML('afterend',
+    '<div class="card" style="border-left:4px solid #f59e0b"><b>⚠️ 请通过本地服务器打开本页面。</b><br>' +
+    '直接双击 HTML 文件（file:// 协议）浏览器会禁止加载处理引擎。请双击运行目录里的 <code>start_mac.command</code>（Mac）或 <code>start_win.bat</code>（Windows），' +
+    '或在目录下执行 <code>python3 -m http.server 8137</code> 后访问 <code>http://localhost:8137</code>。</div>');
+}
+</script>
+</body>
+</html>
