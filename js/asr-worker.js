@@ -9,8 +9,8 @@ self.onmessage = async (e) => {
     if (!TF) {
       self.postMessage({ type: 'status', text: '正在加载语音识别引擎...' });
       TF = await import('../vendor/transformers.min.js');
-      TF.env.allowLocalModels = false;
       TF.env.useBrowserCache = true;
+      TF.env.localModelPath = new URL('../models/', import.meta.url).href;
       TF.env.backends.onnx.wasm.wasmPaths = new URL('../vendor/', import.meta.url).href;
       TF.env.backends.onnx.wasm.numThreads = 1;
     }
@@ -18,7 +18,19 @@ self.onmessage = async (e) => {
     if (!pipe || pipeKey !== key) {
       TF.env.remoteHost = host;
       const modelId = 'Xenova/whisper-' + model;
-      self.postMessage({ type: 'status', text: `正在准备识别模型 ${modelId}（首次使用需下载，之后走浏览器缓存）...` });
+      // 先探测 models/ 目录里有没有预下载的本地模型
+      let hasLocal = false;
+      try {
+        const r = await fetch(new URL(`../models/${modelId}/config.json`, import.meta.url), { method: 'HEAD' });
+        hasLocal = r.ok;
+      } catch { /* 探测失败按无本地模型处理 */ }
+      TF.env.allowLocalModels = hasLocal;
+      if (hasLocal) {
+        self.postMessage({ type: 'status', text: `检测到本地模型 ${modelId}，直接从本地加载（无需联网）...` });
+      } else {
+        self.postMessage({ type: 'status', text: `正在准备识别模型 ${modelId}（首次使用需下载，之后走浏览器缓存；` +
+          `也可运行 python3 download_models.py 把模型下载到本地一劳永逸）...` });
+      }
       const dlLogged = new Set();
       pipe = await TF.pipeline('automatic-speech-recognition', modelId, {
         quantized: true,

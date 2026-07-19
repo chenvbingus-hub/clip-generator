@@ -49,9 +49,17 @@ MP3 音频 / MP4 视频片段，支持批量处理、ZIP 打包下载。文件�
 ## 说明
 
 - FFmpeg、识别引擎等运行库已内置在 `vendor/` 目录，**无需联网加载**。
-  只有 Whisper 模型首次使用时需要下载（之后走浏览器缓存）：
-  tiny ≈ 40MB · base ≈ 75MB · small ≈ 250MB。
-  国内网络访问 HuggingFace 困难时，把「模型下载源」切换为 **hf-mirror 国内镜像**。
+  只有 Whisper 模型需要获取，有两种方式：
+  1. **推荐：预下载到本地（一劳永逸，之后完全不联网）**——在工具目录运行
+
+     ```bash
+     python3 download_models.py            # 下载 small 模型（国内网络加 --mirror）
+     ```
+
+     模型会存到 `models/` 目录，页面自动优先本地加载（日志显示“检测到本地模型”）。
+  2. 什么都不做：首次使用时由页面自动下载（之后走浏览器缓存）。
+     tiny ≈ 40MB · base ≈ 75MB · small ≈ 250MB。
+     国内网络访问 HuggingFace 困难时，把「模型下载源」切换为 **hf-mirror 国内镜像**。
 - 视频切割使用浏览器内的 FFmpeg (WebAssembly)，精确模式重编码速度约为
   实时的几分之一，长视频请耐心等待；文件建议不超过 ~900MB（受浏览器内存限制）。
 - 推荐使用最新版 Chrome / Edge。
