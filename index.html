@@ -100,6 +100,9 @@
           <option value="english" selected>英语</option>
           <option value="chinese">中文</option>
           <option value="japanese">日语</option>
+          <option value="spanish">西班牙语</option>
+          <option value="french">法语</option>
+          <option value="german">德语</option>
           <option value="auto">自动检测</option>
         </select>
       </label>
@@ -290,60 +293,49 @@ async function ffexec(ff, args) {
   }
 }
 
-// ---------- Whisper ----------
-let TF = null;           // transformers 模块
-let asrPipe = null, asrKey = '';
-const dlLogged = new Set();
+// ---------- Whisper（在 Web Worker 中运行，避免转写时页面卡死） ----------
+const MOCK_ASR = new URLSearchParams(location.search).has('mockasr');
+let asrWorker = null;
 
 // 测试钩子：URL 带 ?mockasr=1 时用假转写结果代替真实模型（仅供自动化测试）
-function mockAsr() {
-  return async (pcm) => {
-    const dur = pcm.length / 16000;
-    const chunks = [];
-    let t = 0, n = 0;
-    while (t < dur - 0.3) {
-      for (let i = 0; i < 4 && t < dur - 0.3; i++) {
-        chunks.push({ text: ' ' + (i === 0 ? 'Word' : 'word') + (++n) + (i === 3 ? '.' : ''), timestamp: [t, t + 0.25] });
-        t += 0.3;
-      }
+function mockTranscribe(pcm) {
+  const dur = pcm.length / 16000;
+  const chunks = [];
+  let t = 0, n = 0;
+  while (t < dur - 0.3) {
+    for (let i = 0; i < 4 && t < dur - 0.3; i++) {
+      chunks.push({ text: ' ' + (i === 0 ? 'Word' : 'word') + (++n) + (i === 3 ? '.' : ''), timestamp: [t, t + 0.25] });
+      t += 0.3;
     }
-    return { chunks };
-  };
+  }
+  return chunks;
 }
 
-async function getASR() {
-  if (new URLSearchParams(location.search).has('mockasr')) return mockAsr();
-  if (!TF) {
-    log('正在加载语音识别引擎...');
-    TF = await import('./vendor/transformers.min.js');
-    TF.env.allowLocalModels = false;
-    TF.env.useBrowserCache = true;
-    TF.env.backends.onnx.wasm.wasmPaths = new URL('vendor/', location.href).href;
-    TF.env.backends.onnx.wasm.numThreads = 1;
-  }
-  const model = $('modelSel').value;
-  const host = $('hostSel').value;
-  const key = model + '|' + host;
-  if (asrPipe && asrKey === key) return asrPipe;
-  TF.env.remoteHost = host;
-  const modelId = 'Xenova/whisper-' + model;
-  log(`正在准备识别模型 ${modelId}（首次使用需下载，之后走浏览器缓存）...`);
-  dlLogged.clear();
-  asrPipe = await TF.pipeline('automatic-speech-recognition', modelId, {
-    quantized: true,
-    progress_callback: p => {
-      if (p.status === 'progress' && p.total) {
-        const decile = Math.floor(p.progress / 10) * 10;
-        const k = p.file + '@' + decile;
-        if (!dlLogged.has(k)) { dlLogged.add(k); log(`  下载 ${p.file}: ${decile}%`); }
-      } else if (p.status === 'done') {
-        log(`  ${p.file} 就绪`);
-      }
-    },
+// 把 PCM 发给 Worker 转写；pcm 的底层 buffer 会被转移，调用后不可再使用
+function transcribeInWorker(pcm, duration, onProgress) {
+  if (MOCK_ASR) return Promise.resolve(mockTranscribe(pcm));
+  return new Promise((resolve, reject) => {
+    if (!asrWorker) {
+      asrWorker = new Worker(new URL('js/asr-worker.js', location.href), { type: 'module' });
+    }
+    asrWorker.onmessage = (e) => {
+      const m = e.data;
+      if (m.type === 'status') log(m.text);
+      else if (m.type === 'progress') onProgress(m.frac);
+      else if (m.type === 'result') resolve(m.chunks);
+      else if (m.type === 'error') { asrWorker.terminate(); asrWorker = null; reject(new Error(m.message)); }
+    };
+    asrWorker.onerror = (e) => {
+      asrWorker.terminate(); asrWorker = null;
+      reject(new Error('识别引擎异常: ' + (e.message || '加载失败')));
+    };
+    asrWorker.postMessage({
+      pcm, duration,
+      model: $('modelSel').value,
+      lang: $('langSel').value,
+      host: $('hostSel').value,
+    }, [pcm.buffer]);
   });
-  asrKey = key;
-  log('识别模型加载完成');
-  return asrPipe;
 }
 
 // ---------- WAV 解析 ----------
@@ -420,25 +412,10 @@ async function processFile(item) {
   log(`音频提取完成，时长 ${duration.toFixed(1)} 秒`);
   setRowProgress(item, 0.1);
 
-  // 2. Whisper 转写（词级时间戳）
-  const asr = await getASR();
-  log('正在转写（首次转写会较慢，请耐心等待）...');
-  const lang = $('langSel').value;
-  const totalChunks = Math.max(1, Math.ceil(duration / 25));
-  let chunksDone = 0;
-  const opts = {
-    chunk_length_s: 30,
-    stride_length_s: 5,
-    return_timestamps: 'word',
-    task: 'transcribe',
-    chunk_callback: () => {
-      chunksDone++;
-      setRowProgress(item, 0.1 + 0.5 * Math.min(chunksDone / totalChunks, 1));
-    },
-  };
-  if (lang !== 'auto') opts.language = lang;
-  const output = await asr(pcm, opts);
-  const chunks = output.chunks || [];
+  // 2. Whisper 转写（词级时间戳，在后台 Worker 中进行）
+  log('正在转写（后台进行，页面不会卡顿；首次转写较慢请耐心等待）...');
+  const chunks = await transcribeInWorker(pcm, duration,
+    frac => setRowProgress(item, 0.1 + 0.5 * frac));
   const words = Segmenter.wordsFromChunks(chunks, duration);
   log(`转写完成, 音频时长 ${duration.toFixed(1)} 秒, 共 ${words.length} 个单词`);
   setRowProgress(item, 0.6);
