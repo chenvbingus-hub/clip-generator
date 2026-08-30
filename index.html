@@ -113,6 +113,14 @@
           <option value="fast">快速（按关键帧，切点可能不准）</option>
         </select>
       </label>
+      <label>输出分辨率：
+        <select id="resSel">
+          <option value="" selected>原始分辨率（不缩放）</option>
+          <option value="1280x800">1280×800</option>
+          <option value="1920x1200">1920×1200</option>
+          <option value="2560x1600">2560×1600</option>
+        </select>
+      </label>
       <label><input type="checkbox" id="alsoMp3Chk"> 视频同时导出 MP3</label>
       <label>模型下载源：
         <select id="hostSel">
@@ -163,7 +171,7 @@ const resultCard = $('resultCard'), resultsBox = $('resultsBox'), resultCount = 
 const zipAllBtn = $('zipAllBtn'), resetBtn = $('resetBtn');
 
 // ---------- 设置持久化 ----------
-const SETTING_IDS = ['modelSel','langSel','semanticChk','cutModeSel','alsoMp3Chk','hostSel'];
+const SETTING_IDS = ['modelSel','langSel','semanticChk','cutModeSel','resSel','alsoMp3Chk','hostSel'];
 for (const id of SETTING_IDS) {
   const el = $(id);
   const saved = localStorage.getItem('clipgen_' + id);
@@ -435,6 +443,7 @@ async function processFile(item) {
 
   // 4. 逐句切割
   const cutMode = $('cutModeSel').value;
+  const resValue = $('resSel').value;
   const alsoMp3 = $('alsoMp3Chk').checked;
   item.clips = [];
   for (let i = 0; i < segs.length; i++) {
@@ -452,6 +461,7 @@ async function processFile(item) {
       const args = cutMode === 'fast'
         ? ['-ss', start.toFixed(3), '-i', inName, '-t', dur.toFixed(3), '-c', 'copy', '-avoid_negative_ts', 'make_zero', outName]
         : ['-ss', start.toFixed(3), '-i', inName, '-t', dur.toFixed(3),
+           ...(resValue ? ['-vf', `scale=${resValue.replace('x', ':')}:force_original_aspect_ratio=decrease:force_divisible_by=2`] : []),
            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-pix_fmt', 'yuv420p',
            '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', outName];
       await ffexec(ff, args);
